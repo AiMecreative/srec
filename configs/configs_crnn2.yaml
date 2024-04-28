@@ -1,0 +1,77 @@
+task:
+  _target_: srec.dataclass_configs.TaskConfigs
+  epochs: 300
+  device: cuda:0
+  infer_dir: infer
+  tensorboard_dir: tensorboardx
+  save_dir: save_dir
+  save_interval: 10
+  eval_interval: 1
+  num_losses: 2
+  load_pretrain: False
+  pretrain_weights: ""
+
+optim:
+  _target_: srec.dataclass_configs.OptimConfigs
+  lr: 5e-4
+  betas: [0.5, 0.999]
+
+data:
+  _target_: srec.dataclass_configs.DataConfigs
+  train_ds: "/home/zsplinx2/Project/xr/dataset/textzoom/textzoom/train1"
+  eval_ds: "/home/zsplinx2/Project/xr/dataset/textzoom/textzoom/train2"
+  infer_ds: "/home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/easy"
+  charset: "1234567890abcdefghijklmnopqrstuvwxyz"
+  img_shape: [64, 256]
+  img_type: "RGB"
+  min_label_len: 2
+  max_label_len: 25
+  min_img_len: 0
+  min_psnr: 16.0
+  defocus_blur: False
+  rotate_degree: 5
+
+  # dataloader configs
+  batch_size: 32
+  shuffle: True
+  num_workers: 32
+
+encoder:
+  _target_: srec.dataclass_configs.HREncoderConfigs
+  in_channels: 3
+  out_channels: 256
+  kernel_sizes: [9, 3, 3]
+  paddings: [4, 1, 1]
+  strides: [1, 1, 2]
+  num_conv_bn: 3
+
+augment:
+  _target_: srec.dataclass_configs.AugmentConfigs
+  in_channels: 256
+  channel_mults: [2]
+  num_mini: 1
+  num_mids: 1
+  num_attn_heads: 4
+  timesteps: 2000
+  concat_hr_lr: True
+  concat_type: "mix"
+
+sr:
+  _target_: srec.dataclass_configs.SRConfigs
+  num_srbs: 5
+  channels: 256
+  out_channels: 3
+  up_scale: 2 # defined by strides in `encoder`
+
+recognizer:
+  _target_: srec.dataclass_configs.RecognizerConfigs
+  backbone: crnn
+  max_label_len: 30
+  in_channels: 256
+  feature_size: [32, 128]
+  charset_size: 37
+  mlp_hidden: 128
+  rnn_hidden: 256
+  load_pretrain: False
+  pretrain_recognizer: pretrain/crnn_synth90k.pt
+

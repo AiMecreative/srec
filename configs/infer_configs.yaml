@@ -1,0 +1,76 @@
+task:
+  _target_: srec.dataclass_configs.TaskConfigs
+  epochs: 300
+  device: cuda:0
+  infer_dir: infer
+  tensorboard_dir: tensorboardx
+  save_dir: save_dir
+  save_interval: 10
+  eval_interval: 1
+  num_losses: 2
+  pretrain_weights: save_dir/epoch20_statedicts.pth
+
+optim:
+  _target_: srec.dataclass_configs.OptimConfigs
+  lr: 5e-5
+  betas: [0.5, 0.999]
+
+data:
+  _target_: srec.dataclass_configs.DataConfigs
+  train_ds: "/home/zsplinx2/Project/xr/dataset/textzoom/textzoom/train1"
+  eval_ds: "/home/zsplinx2/Project/xr/dataset/textzoom/textzoom/train2"
+  infer_ds: "/home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/easy"
+  charset: "1234567890abcdefghijklmnopqrstuvwxyz"
+  img_shape: [64, 256]
+  img_type: "RGB"
+  min_label_len: 2
+  max_label_len: 25
+  min_img_len: 0
+  min_psnr: 16.0
+  defocus_blur: False
+  rotate_degree: 5
+
+  # dataloader configs
+  batch_size: 16
+  shuffle: True
+  num_workers: 32
+
+encoder:
+  _target_: srec.dataclass_configs.HREncoderConfigs
+  in_channels: 3
+  out_channels: 384
+  kernel_sizes: [9, 3, 3]
+  paddings: [4, 1, 1]
+  strides: [1, 2, 2]
+  num_conv_bn: 3
+
+augment:
+  _target_: srec.dataclass_configs.AugmentConfigs
+  in_channels: 384
+  channel_mults: [2]
+  num_mini: 1
+  num_mids: 1
+  num_attn_heads: 4
+  timesteps: 2000
+  concat_hr_lr: True
+  concat_type: "mix"
+
+sr:
+  _target_: srec.dataclass_configs.SRConfigs
+  num_srbs: 5
+  channels: 384
+  out_channels: 3
+  up_scale: 4 # defined by strides in `encoder`
+  device: cuda:0
+
+recognizer:
+  _target_: srec.dataclass_configs.RecognizerConfigs
+  backbone: parseq
+  charset_size: 39
+  max_label_length: 25
+  dim_models: 384
+  num_heads: 12
+  dim_feedforward: 1536
+  device: cuda:0
+  max_num_perm: 6
+  pretrain: save_dir/epoch10_statedicts.pth

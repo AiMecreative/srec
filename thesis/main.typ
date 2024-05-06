@@ -113,7 +113,7 @@
 
 = 相关工作
 
-本章将分别介绍场景文本识别（STR）模型、场景文本图像超分辨率（STISR）模型和隐式扩散模型（Stable Diffusion Model），并讨论其与本文模型的关系。
+本章将分别介绍场景文本识别（STR）模型、场景文本图像超分辨率（STISR）模型和隐式扩散模型（Stable Diffusion Model），并讨论其与本文模型的关系。在本章节最后几节，将介绍本工作将要使用的数据集、损失函数和衡量指标等，以便后文能顺利地引入本文模型。
 
 == 场景文本识别
 
@@ -142,8 +142,21 @@ DPAN~@dpan 模型在架构上进行了研究，并基于并行解耦的编码器
 == 场景文本图像超分辨率
 
 // * NOTES: interpolation based, attention based, diffusion based
+// 0. introduce pixel shuffle module
 // 1.interpolation based: bilinear and bicubic
-// 2.attention based: TATT
+// 2.attention based: TATT, DPMN,
+// 3.diffusion based: SR3
+
+场景文本图像超分辨率（STISR）的目的是提高低分辨率文本图像的质量，STISR能大大提升前文提到的STR任务对低分辨率文本的识别率，因此对该领域的研究对自动驾驶等下游任务的发展有着重要意义。目前，已经有很多研究人员在该领域做出了巨大贡献。本节先介绍传统插值的图像超分辨率方法，接着以该方法为基础，引出该领域的相关工作。
+
+#figure(
+  image("fig/fig2-2-1.svg", width: 60%),
+  placement: auto,
+  caption: [左侧：原始图像大小，右侧：超分辨后图像大小]
+)<fig2-2-1>
+
+*插值*。插值主要目的是根据给定数据点，估计给定点附近的值。用于图像超分辨率的插值方式包括最近邻插值、双线性插值和双三次插值等方式。如图~@fig2-2-1 假设原始图像大小为 $(h, w)$，以将图片分辨率放大到原来的*两倍*为例，即超分辨后的图像大小为 $(2h,2w)$，分别讨论三种超分辨率方式的效果。
+
 
 == 扩散模型
 

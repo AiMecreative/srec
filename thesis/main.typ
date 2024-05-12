@@ -362,7 +362,55 @@ $
 
 模型使用多个损失函数进行监督训练，并学习不确定性权重（Uncertainty Weight Loss）~@uncertainty-loss 来权衡不同任务之间的比重。
 
-*识别损失*。识别损失采用CTC损失函数~@ctc，该损失常用于文本序列预测的监督任务。在序列模型中，采用交叉熵损失或均方误差损失时，经常需要将输出的预测值与真实值标签对齐，这种对齐方式工作量大；除此之外，预测结果中可能存在空白字符和连续字符，空白字符可能由图像中两个文本间的空白区域预测得到，而连续字符则可能是图像中同一字符被多次识别，也有可能是文本中原本就存在连续字符；因此解码器的工作量较大。CTC损失通过在标签中添加空白字符分隔每个字符，在解码时先合并相同字符，再删去空白符得到预测标签，不需要事先对齐标签长度，由于两个连续字符之间必然会存在空白字符，因而不会造成预测歧义。
+*识别损失$cal(L)_r$*。识别器使用CTC损失函数~@ctc 进行监督训练，该损失常用于文本序列预测的监督任务。在序列模型中，采用交叉熵损失或均方误差损失时，经常需要将输出的预测值与真实值标签对齐，这种对齐方式工作量大；除此之外，预测结果中可能存在空白字符和连续字符，空白字符可能由图像中两个文本间的空白区域预测得到，而连续字符则可能是图像中同一字符被多次识别，也有可能是文本中原本就存在连续字符；因此解码器的工作量较大。CTC损失通过在标签的相邻字符中添加空白字符，在解码时先合并相同字符，再删去空白符得到预测标签，由于两个连续字符之间必然会存在空白字符，因而不会造成预测歧义。根据隐马尔可夫的前向后向算法可以得到该损失函数反向传播时的更新梯度为
+
+$
+g_t = (partial P_theta_t (hat(Y) | X)) / (partial theta_t) = sum_(i,j,c) (partial p_(i,j)(c)) / (partial theta_t) alpha_(i,j) beta_(i,j+1)
+$
+
+该梯度的具体推导见附录。
+
+*超分损失$cal(L)_s$*。超分器使用两类损失共同监督训练。第一部分为MSE均方误差损失
+
+$
+cal(L)_1 = 1/n sum_(i=0)^n (I_h (y_i) - I_s (y_i))^2
+$
+
+该损失在图像像素空间对超分图像 $I_s (y) = cal(F)_theta (y)$ 的输出进行了约束，监督图像在颜色上进行恢复。
+
+第二部分基于梯度剖面先验（Gradient Profile Prior Loss, GPP）~@gpp 在图像的梯度场上设计了损失函数
+
+$
+cal(L)_2 = 1/n sum_(i=0)^n ||nabla I_h (y_i) - nabla I_s (y_i)||_1
+$
+
+其中 $nabla I$ 为图像的梯度，即 $nabla I = ((partial_x) / (partial x) I, (partial_y) / (partial y) I) = sqrt(((partial_x) / (partial x) I)^2 + ((partial_y) / (partial y) I)^2) arrow(n)$（$arrow(n)$ 是同方向单位向量）。
+
+图像梯度反映了图像的锐化程度，梯度场中的梯度剖面越小，说明该图像的边界越明显~@gpp 尖锐，在一定程度上说明该图像越清晰。最终的超分损失为二者的加权和
+
+$
+cal(L)_s = cal(L_1) + lambda cal(L)_2
+$
+
+其中 $lambda in bb(R)$，在后续的消融实验中会进行该值的讨论。
+
+*特征损失$cal(L)_f$*。// TODO: ing waiting for result, maybe no feature loss
+
+*多任务损失权重*。本文的模型涉及到多个损失函数，因此需要一种权衡任务规模、梯度大小的加权方式，实现模型使用多任务损失进行端到端训练。一种常用的加权方式是各个梯度间的线性组合
+
+$
+cal(L) = alpha_1 cal(L)_r + alpha_2 cal(L)_s
+$
+
+一般而言，加权系数满足关系 $alpha_1 + alpha_2 = 1$。这种加权方式简单，并且能够自行根据任务规模设置权重系数，但缺点是不能根据训练任务进行的状态实时更新权重，忽略了训练时各个梯度更新快慢不一致的特点。
+
+而使用不确定性加权~@uncertainty-loss 的方式则可以动态学习损失间的加权系数，加权系数中含有带学习的参数 $sigma$，可以随着模型参数的更新同不更新，从而调整不同任务的损失函数权重，使用不确定性加权后的总损失可以写为
+
+$
+cal(L) = 1/(2 sigma_r^2) cal(L)_r + 1/(2 sigma_s^2) cal(L)_s + log (1+sigma_r^2) + log (1 + sigma_s^2)
+$
+
+其中 $sigma_1,sigma_2$ 是待学习的参数。该损失的具体推导可以参考附录。
 
 = 实验结果与分析
 
@@ -375,7 +423,96 @@ $
 #seu_bibliography("../ref.bib")
 
 #appendix[
-  = 模型推理结果
+= 损失函数
+
+== 识别损失
+
+设输入CTC损失的特征图 $F$ 的宽为 $T$（即时间序列长度），目标单词表大小为 $S_c$，则分类的类别一共有 $S=S_c+1$ 类（包括空白字符 $epsilon$ ）。CTC损失的标签对齐方式为：对于特征图 $F in bb(R)^(T times S)$，按照时间步顺序依次预测字符，若预测出的字符长度满足空白字符个数与单词表字符个数和为 $T$，且单词表字符必须大于 $0$，即 
+
+$
+T_epsilon + T_c = T, T_epsilon >= 0, T_c > 0
+$<eqA-ctc>
+
+//TODO: 图
+则该预测标签为一个合法的对齐方式，设所有合法的对齐标签为集合 $cal(S)_a$。CTC损失满足如\@所示的隐马尔可夫过程：包括空白字符在内的字符表示一个隐状态，约束条件由@eqA-ctc 给出。设从预测开始，到时间步 $i$ 时，已经产生 $j$ 个单词表字符的概率为前向概率 $alpha_(i,j)$，则由马尔可夫性，
+
+$
+alpha_(i,j) = alpha_(i-1,j) p_(i-1,j)(epsilon) + alpha_(i,j-1) p_(i,j-1)(c_j)
+$<eqA-alpha>
+
+其中 $p_(i,j-1)(c_j)$ 表示在时间步为 $i$ 预测为第 $j$ 个单词表字符的概率，$p_(i-1,j)(epsilon)$ 表示在时间步为 $i-1$ 预测出空白字符的概率，显然由递归关系可以得到@eqA-alpha。同理，设从时间步 $i$，位于第 $j$ 个单词表字符开始，从 $i+1$ 到 $T$ 会产生合法对齐标签的概率为后向概率 $beta_(i,j)$，则由马尔可夫性，
+
+$
+beta_(i,j) = beta_(i+1,j) p_(i,j) (epsilon) + beta_(i,j+1) p_(i,j) (c_(j+1))
+$
+
+因此给定输入特征，预测标签的概率为
+
+$
+p_theta (L_p | F) = sum_(a in cal(S)_a) p_theta (a | F)
+$
+
+其中 $p_theta (a | F) = Pi_(p in "path") p$ 表示一个合法对齐标签路径上所有节点概率的乘积，整个标签预测的概率即所有合法路径概率的和。每一个节点概率 $p in "path"$ 是由模型网络产生的。以在时间步 $i$ 已经预测出 $j$ 个字符，且下一个预测字符为 $c$ 的节点概率 $p_(i,j)(c)$ 为例，在反向传播时，由链式法则得到
+
+$
+(partial p_theta (L_p | F)) / (partial theta) = sum_(a in cal(S)_a) (partial p_(i,j)(c)) / (partial theta) (partial p_theta (L_p | F)) / (partial p_(i,j)(c))
+$
+
+$(partial p_(i,j)(c)) / (partial theta)$ 与整个模型有关，后一项 $(partial p_theta (L_p | F)) / (partial p_(i,j)(c))$ 由CTC损失路径确定。将所有路径 $cal(S)_a$ 分为包含节点 $p_(i,j)(c)$ 的部分 $cal(S)_a^i$ 和不包含节点 $p_(i,j)(c)$ 的部分$cal(S)_a^e$，则对 $p_(i,j)(c)$ 求偏导后，与其无关的路径导数为 $0$，其余部分可以写为
+
+$
+(partial p_theta (L_p | F)) / (partial p_(i,j)(c)) = sum_(a in cal(S)_a^i) (p_theta (a | F)) / (p_(i,j)(c))
+$
+
+该式子表示在时间步 $i$ 时，已经产生 $j$ 个单词表字符、且在当前状态产生下一个单词表字符为 $c$、且从 $i+1$ 到 $T$ 将产生 $T-i$ 个单词表字符的概率
+
+== 多任务损失
+
+一般而言，识别任务为分类任务，超分任务为回归任务，其似然函数可以分别表示为
+
+$
+p_r (cal(F)_theta (I_l)=c | I_l) = "softmax" (1 / sigma_r^2 cal(F)_theta (I_l))\
+p_s (I_s | I_l,I_h) = cal(N) (cal(F)_theta (I_l), sigma_s)
+$<eqA-p>
+
+其中 $sigma_r>0, sigma_s>0$ 分别表示识别任务和超分辨率任务中的不确定性（识别任务表达式类似于玻尔兹曼分布，则该不确定性参数表示分布中的温度；而超分任务表达式中不确定性参数表示方差）。模型训练的目的即通过优化参数 $theta$ 最大化对数似然分布
+
+$
+theta^star &= "argmax"_theta log p(c, I_s | I_l, I_h)\
+&= "argmax"_theta log p_r (c | I_l) + log p_s (I_s | I_l)
+$
+
+其中 $p,p_r,p_s$ 都是带有模型参数 $theta$ 的似然函数。对于识别任务 $log p_r (c | I_l)$，由@eqA-p 可以写为
+
+$
+log p_r (cal(F)_theta (I_l)=c | I_l) &= log "softmax" (1 / sigma_r^2 cal(F)_theta (I_l))\
+&= log (exp (1/sigma_r^2 cal(F)_theta (I_l))) / (sum_c exp (1/sigma_r^2 cal(F)_theta (I_l)))\
+&= 1/sigma_r^2 cal(F)_theta (I_l) - log sum_c exp (1/sigma_r^2 cal(F)_theta (I_l))
+$
+
+而对于超分任务 $log p_s (I_s | I_l)$ 可以写为
+
+$
+log p_s (I_s | I_l,I_h) &= log cal(N) (cal(F)_theta (I_l), sigma_s)\
+&prop -1/(2 sigma_s^2) || I_h - cal(F)_theta (I_l) ||^2 - log sigma_s
+$
+
+损失函数定义为最小化形式，可以表示为（近似过程参考文献~@uncertainty-loss）
+
+$
+cal(L) &= -log p(c,I_s | I_l,I_h)\
+&= 1/(2 sigma_s^2) || I_h - cal(F)_theta (I_l) ||^2 + log sigma_s - 1/sigma_r^2 cal(F)_theta (I_l) + log sum_c exp (1/sigma_r^2 cal(F)_theta (I_l))\
+&approx 1/(2 sigma_s^2) cal(L)_s + 1/(sigma_r^2) cal(L)_r + log sigma_s + log sigma_r
+$
+
+为了防止正则项出现负数，可以采用如下方式~@uncertainty-loss-2 进行损失的计算
+
+$
+cal(L) = 1/(2 sigma_s^2) cal(L)_s + 1/(sigma_r^2) cal(L)_r + log (1 + sigma_s^2) + log (1 + sigma_r^2)
+$<eq-loss>
+
+本文模型最终的多任务损失函数即由~@eq-loss 给出。其中 $sigma_r,sigma_s$可以在训练前指定特定值，也将其加入模型中的可学习的参数中，随着模型参数一同更新，实现动态调整梯度传播时的权重。
+
 ]
 
 #acknowledgment[]

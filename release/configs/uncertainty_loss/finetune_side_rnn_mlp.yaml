@@ -1,0 +1,103 @@
+device_ids: [1]
+device: cuda:1
+num_evaluate: 10000
+num_epochs: 300
+img_shape: [32, 128]
+infer_dir: sr_infer_res
+save_dir: expr/weighted_loss_sidernn_mlp/ckpt_weighted_loss_sidernn_mlp
+tensorboard_dir: expr/weighted_loss_sidernn_mlp/tensorboardx_weighted_loss_sidernn_mlp
+figs_dir: model_figs
+save_per_epochs: 1
+pretrain_weights: pretrain_weights/psrec_base.pth #pretrain_weights/uncertainty_best_model1/best_acc_model.pth #
+
+freeze:
+  frozen_modules: [] # [encoder, augment, sr, recognizer]
+  finetune_rec_type: [all] #[side_rnn, mlp, dense, all]
+
+data:
+  _target_: configs.mappings.DataConfigs
+  train_ds:
+    [
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/train1,
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/train2,
+    ]
+  eval_ds:
+    [
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/easy,
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/medium,
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/hard,
+    ]
+  infer_ds:
+    [
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/easy,
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/medium,
+      /home/zsplinx2/Project/xr/dataset/textzoom/textzoom/test/hard,
+    ]
+  charset: 0123456789abcdefghijklmnopqrstuvwxyz
+  img_shape: [32, 128]
+  read_mode: RGB
+  img_type: hrlr
+  min_label_len: 0
+  max_label_len: 100
+  min_img_len: 0
+  perspective_scale: [0, 0]
+  rotate_degree: [0, 0]
+  batch_size: 512
+  shuffle: true
+  num_workers: 32
+
+# config in scheduler class
+optim:
+  _target_: configs.mappings.OptimConfigs
+  loss_lr: 1e-5
+  lr: 5e-4
+  betas: [0.5, 0.999]
+
+lr_scheduler:
+  step_size: 30
+  gamma: 0.5
+
+loss:
+  # _target_: configs.mappings.LossConfigs
+  loss_types: [sr, rec]
+  learn_weights: true
+  init_weights: [0.7, 0.7]
+  weight_decay: 0.1
+  sr_loss_weights: [20, 0.0001]
+  sr_requires_gp: true
+  rec_blank_id: 0
+
+psrec:
+  _target_: configs.mappings.PSRecConfigs
+  encoder:
+    _target_: configs.mappings.EncoderConfigs
+    img_channels: 4
+    img_size: [32, 128]
+    model_channels: 64
+    scale: 2
+  augment:
+    _target_: configs.mappings.AugmentConfigs
+    model_channels: 64
+    num_srbs: 3
+  recognizer:
+    # _target_: configs.mappings.RecognizerConfigs
+    img_channel: 1
+    img_height: 32
+    img_width: 128
+    num_classes: 37
+    seq_hidden: 64
+    rnn_hidden: 256
+    model_channels: 64
+    scale: 2
+    out_channels: 4
+    mlp_classifier: true
+    side_rnn: true
+    input_type: shallow
+  sr:
+    _target_: configs.mappings.SRConfigs
+    model_channels: 64
+    out_channels: 4
+    scale: 2
+  scale: 2
+  image_size: [32, 128]
+  requires_augment: true
